@@ -16,10 +16,10 @@ services:
     volumes:
       - ~/sharelatex_data:/var/lib/overleaf
       ########################################################################
-      ####  Server Pro: Uncomment the following line to mount the docker  ####
-      ####             socket, required for Sibling Containers to work    ####
+      ####  The docker socket mount is required for Sandboxed Compiles    ####
+      ####  (sibling containers). Remove it if SANDBOXED_COMPILES is off. ####
       ########################################################################
-      # - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       OVERLEAF_APP_NAME: Overleaf Community Edition
 
@@ -74,16 +74,16 @@ services:
       ## Server Pro ##
       ################
 
-      ## The Community Edition is intended for use in environments where all users are trusted and is not appropriate for
-      ## scenarios where isolation of users is required. Sandboxed Compiles are not available in the Community Edition,
-      ## so the following environment variables must be commented out to avoid compile issues.
-      ##
-      ## Sandboxed Compiles: https://docs.overleaf.com/on-premises/configuration/overleaf-toolkit/server-pro-only-configuration/sandboxed-compiles
+      ## Sandboxed Compiles run each LaTeX compile in its own isolated docker
+      ## container (network disabled, all capabilities dropped, seccomp
+      ## filtered). Requires the docker socket mount above and an image built
+      ## from this repository. The host dir variables must point at the
+      ## host-side paths of the compiles/output data dirs mounted above.
       SANDBOXED_COMPILES: "true"
       ### Bind-mount source for /var/lib/overleaf/data/compiles inside the container.
-      SANDBOXED_COMPILES_HOST_DIR_COMPILES: "/home/user/sharelatex_data/data/compiles"
+      SANDBOXED_COMPILES_HOST_DIR_COMPILES: "${HOME}/sharelatex_data/data/compiles"
       ### Bind-mount source for /var/lib/overleaf/data/output inside the container.
-      SANDBOXED_COMPILES_HOST_DIR_OUTPUT: "/home/user/sharelatex_data/data/output"
+      SANDBOXED_COMPILES_HOST_DIR_OUTPUT: "${HOME}/sharelatex_data/data/output"
       ### Backwards compatibility (before Server Pro 5.5)
       DOCKER_RUNNER: "true"
       SANDBOXED_COMPILES_SIBLING_CONTAINERS: "true"
@@ -139,7 +139,7 @@ services:
   # See https://github.com/jwilder/nginx-proxy for documentation on how to configure the nginx-proxy container,
   # and https://github.com/overleaf/overleaf/wiki/HTTPS-reverse-proxy-using-Nginx for an example of some recommended
   # settings. We recommend using a properly managed nginx instance outside of the Overleaf Server Pro setup,
-  # but the example here can be used if you'd prefer to run everything with docker-compose
+  # but the example here can be used if you'd prefer to run everything with docker compose
 
   # nginx-proxy:
   #     image: jwilder/nginx-proxy

@@ -80,4 +80,42 @@ class Lock {
   }
 }
 
-export default { acquire, getExistingLock }
+// Per-key FIFO queues used by the DockerRunner to serialise container
+// start/destroy operations on the same container name. Separate from the
+// compile-level LOCKS above, which guard whole compile requests.
+const KEY_QUEUES = new Map()
+
+/**
+ * Run `runner(releaseLock)` once any earlier operations on `key` have
+ * released. `releaseLock(err, ...results)` releases the queue slot and
+ * forwards its arguments to `callback`.
+ */
+function runWithLock(key, runner, callback) {
+  const queue = KEY_QUEUES.get(key) || Promise.resolve()
+  const job = queue.then(
+    () =>
+      new Promise(resolve => {
+        let released = false
+        const releaseLock = (...args) => {
+          if (released) {
+            logger.error({ key }, 'docker lock was released twice')
+            return
+          }
+          released = true
+          resolve()
+          callback(...args)
+        }
+        try {
+          runner(releaseLock)
+        } catch (err) {
+          releaseLock(err)
+        }
+      })
+  )
+  KEY_QUEUES.set(key, job)
+  job.then(() => {
+    if (KEY_QUEUES.get(key) === job) KEY_QUEUES.delete(key)
+  })
+}
+
+export default { acquire, getExistingLock, runWithLock }

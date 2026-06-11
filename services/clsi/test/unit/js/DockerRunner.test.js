@@ -551,6 +551,105 @@ describe('DockerRunner', () => {
       })
     })
 
+    describe('security hardening', () => {
+      beforeEach(ctx => {
+        ctx.Settings.clsi.docker.user = 'tex'
+        ctx.DockerRunner._runAndWaitForContainer = sinon
+          .stub()
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
+      })
+
+      function runAndGetOptions(ctx, overrides = {}) {
+        ctx.DockerRunner.run(
+          ctx.project_id,
+          ctx.command,
+          ctx.directory,
+          ctx.image,
+          ctx.timeout,
+          overrides.env ?? ctx.env,
+          overrides.compileGroup ?? ctx.compileGroup,
+          overrides.cwd ?? null,
+          ctx.callback
+        )
+        return ctx.DockerRunner._runAndWaitForContainer.lastCall?.args[0]
+      }
+
+      it('should disable networking at both the container and host level', ctx => {
+        const options = runAndGetOptions(ctx)
+        expect(options.NetworkDisabled).to.equal(true)
+        expect(options.HostConfig.NetworkMode).to.equal('none')
+      })
+
+      it('should drop all capabilities and block privilege escalation', ctx => {
+        const options = runAndGetOptions(ctx)
+        expect(options.HostConfig.CapDrop).to.deep.equal(['ALL'])
+        expect(options.HostConfig.SecurityOpt).to.include('no-new-privileges')
+      })
+
+      it('should apply the seccomp profile when configured', ctx => {
+        ctx.Settings.clsi.docker.seccomp_profile = 'mock-seccomp-json'
+        const options = runAndGetOptions(ctx)
+        expect(options.HostConfig.SecurityOpt).to.include(
+          'seccomp=mock-seccomp-json'
+        )
+      })
+
+      it('should apply the apparmor profile when configured', ctx => {
+        ctx.Settings.clsi.docker.apparmor_profile = 'mock-apparmor'
+        const options = runAndGetOptions(ctx)
+        expect(options.HostConfig.SecurityOpt).to.include(
+          'apparmor=mock-apparmor'
+        )
+      })
+
+      it('should not leak the CLSI process environment into the container', ctx => {
+        process.env.CLSI_SECRET_LEAK_TEST = 'super-secret'
+        try {
+          const options = runAndGetOptions(ctx)
+          expect(options.Env).to.deep.equal(['PATH=mock-path'])
+        } finally {
+          delete process.env.CLSI_SECRET_LEAK_TEST
+        }
+      })
+
+      it('should cap memory, pids and cpu time and run as the configured user', ctx => {
+        const options = runAndGetOptions(ctx)
+        expect(options.User).to.equal('tex')
+        expect(options.Memory).to.equal(1024 * 1024 * 1024)
+        expect(options.HostConfig.PidsLimit).to.equal(4096)
+        expect(options.HostConfig.Init).to.equal(true)
+        expect(options.HostConfig.Ulimits).to.deep.equal([
+          { Name: 'cpu', Soft: 42 + 5, Hard: 42 + 10 },
+        ])
+      })
+
+      it('should mount the compile directory read-only for synctex and wordcount', ctx => {
+        for (const compileGroup of ['synctex', 'wordcount']) {
+          const options = runAndGetOptions(ctx, { compileGroup })
+          expect(options.HostConfig.Binds).to.have.length(1)
+          expect(options.HostConfig.Binds[0]).to.match(/:\/compile:ro$/)
+        }
+      })
+
+      it('should reject a cwd that escapes the compile directory', ctx => {
+        const options = runAndGetOptions(ctx, { cwd: '../../etc' })
+        expect(options).to.equal(undefined)
+        ctx.callback.called.should.equal(true)
+        ctx.callback.args[0][0].message.should.equal('invalid cwd')
+      })
+
+      it('should reject an absolute cwd outside the compile directory via prefix trick', ctx => {
+        const options = runAndGetOptions(ctx, { cwd: '../compile-evil' })
+        expect(options).to.equal(undefined)
+        ctx.callback.args[0][0].message.should.equal('invalid cwd')
+      })
+
+      it('should accept a safe relative cwd', ctx => {
+        const options = runAndGetOptions(ctx, { cwd: 'subdir/nested' })
+        expect(options.WorkingDir).to.equal('/compile/subdir/nested')
+      })
+    })
+
     describe('WorkingDir with cwd', () => {
       beforeEach(ctx => {
         ctx.DockerRunner._runAndWaitForContainer = sinon
