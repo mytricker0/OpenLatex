@@ -87,6 +87,21 @@ Reuse the decommissioned Overleaf stack's shape (compose: sharelatex + mongo 6 (
 2. Compose at `Services/OpenLatex/deploy/docker-compose.yml`: `openlatex` + `mongo:6.0 --replSet` + `redis:6.2`, internal network + `npm-network`, bind mounts under `Services/OpenLatex/data/`.
 3. nginx-proxy-manager: new proxy host + Let's Encrypt cert for **openlatex.dev** (domain owned).
 4. Compile safety on a shared box: keep default `compileTimeout: 180` initially (settings.defaults.js:420), `--no-shell-escape` (CE default), container CPU/memory limits in compose. Revisit timeout if CPU contention appears.
+
+### 5b. Goal: Sandboxed Compiles (Server Pro parity)
+
+CE compiles run inside the main container via `LocalCommandRunner` — a compiling user has read/write access to the container (upstream README caution). Server Pro fixes this with per-compile sibling Docker containers; the implementation (`services/clsi/app/js/DockerRunner.js`) is **not in the open repo** — but its full unit test is (`services/clsi/test/unit/js/DockerRunner.test.js`, ~1,100 lines). That test is our interface spec.
+
+Plan (clean-room, AGPL-fine since we write it ourselves):
+1. Implement `DockerRunner.js` against the existing test: run each compile in a fresh `texlive` container via dockerode — project dir bind-mounted, **network disabled**, CPU/memory/pids limits, timeout kill, non-root user.
+2. `CommandRunner.js` already switches on `Settings.clsi.dockerRunner === true` — wire a `SANDBOXED_COMPILES=true` env through server-ce config to set it.
+3. Docker access: do NOT mount the raw docker socket into the app container. Use a socket proxy (`tecnativa/docker-socket-proxy`) on the internal network allowing only container create/start/wait/stop/remove + image inspect, denying exec/volumes/swarm/host config.
+4. TexLive image: official `texlive/texlive` pinned digest; compile containers get `--read-only` rootfs except the mounted compile dir.
+5. Acceptance: the existing DockerRunner unit test passes; a malicious `\write18`/large-file/fork-bomb project cannot touch the app container or other projects' files.
+
+Until shipped: public registration stays invite-only (the compose hardening contains damage to the app container, but multi-tenant isolation is not real without this).
+
+> Overleaf's wiki labels sandboxed compiles a Server Pro *feature*, but the AGPL repo legally permits us to build the same capability ourselves. We only may not copy their proprietary module or call it by their product names.
 5. Backups: nightly `mongodump` + tar of data dirs to off-box storage. **This holds people's theses — backups before launch, not after.**
 
 **Verify:** register, create project, invite second account, compile PDF, both users edit live; restore a backup into a scratch stack once.

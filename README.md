@@ -23,53 +23,76 @@ OpenLatex is based on the source code of [Overleaf Community Edition](https://gi
 
 For more information on Sandbox Compiles check out our [documentation](https://docs.overleaf.com/on-premises/configuration/overleaf-toolkit/server-pro-only-configuration/sandboxed-compiles).
 
-## Enterprise
+## Features
 
-If you want help installing and maintaining Overleaf in your lab or workplace, we offer an officially supported version called [Overleaf Server Pro](https://www.overleaf.com/for/enterprises). It also includes more features for security (SSO with LDAP or SAML), administration and collaboration (e.g. tracked changes). [Find out more!](https://www.overleaf.com/for/enterprises)
+- Real-time collaborative editing — **up to 100 collaborators per project, free**
+- Full TeX Live distribution, PDF preview, project history
+- No ads, no third-party trackers, EU-hosted
+- Open source (AGPL-3.0): the code running at openlatex.dev is exactly this repository
 
-## Keeping up to date
+## Roadmap
 
-Sign up to the [mailing list](https://mailchi.mp/overleaf.com/community-edition-and-server-pro) to get updates on Overleaf releases and development.
+- **Sandboxed compiles** — per-compile isolated Docker containers (network-disabled, resource-capped), replacing the Community Edition model where compiles run inside the app container. See `plan.md` §5b. Until this ships, registration on the hosted instance is invite-only.
+- Redesigned landing page and project dashboard
+- Donation-backed hosting with public cost transparency (no ads, ever — see `plan.md` §6)
 
-## Installation
+## Running it yourself (production)
 
-We have detailed installation instructions in the [Overleaf Toolkit](https://github.com/overleaf/toolkit/).
+Requirements: docker + docker compose v2, a reverse proxy (we use nginx-proxy-manager on an external docker network named `npm-network`).
 
-## Upgrading
+```shell
+git clone https://github.com/mytricker0/OpenLatex.git
+cd OpenLatex/deploy
+docker compose build openlatex   # heavy: pulls TeX Live base image
+docker compose up -d
+```
 
-If you are upgrading from a previous version of Overleaf, please see the [Release Notes section on the Wiki](https://github.com/overleaf/overleaf/wiki#release-notes) for all of the versions between your current version and the version you are upgrading to.
+The web container exposes port 80 **only** on `npm-network` — point your reverse proxy at `openlatex:80` and terminate TLS there. Data lives in `./data/` (bind mounts for app data, mongo, redis). First account: open `https://your-domain/launchpad` to create the admin user.
 
-## Overleaf Docker Image
+Hardening applied out of the box: no published host ports, mongo/redis on an internal-only network, `no-new-privileges`, CPU/memory limits, no docker socket in any app container. Read the caution below before opening registration to strangers.
 
-This repo contains two dockerfiles, [`Dockerfile-base`](server-ce/Dockerfile-base), which builds the
-`sharelatex/sharelatex-base` image, and [`Dockerfile`](server-ce/Dockerfile) which builds the
-`sharelatex/sharelatex` (or "community") image.
+> [!CAUTION]
+> Like upstream Overleaf Community Edition, compiles are **not yet sandboxed**: a user running a compile has read/write access to the resources of the `openlatex` container (filesystem, network, environment). Keep registration restricted to users you trust until the sandboxed-compiles roadmap item lands.
 
-The Base image generally contains the basic dependencies like `wget`, plus `texlive`.
-We split this out because it's a pretty heavy set of
-dependencies, and it's nice to not have to rebuild all of that every time.
+## Local development
 
-The `sharelatex/sharelatex` image extends the base image and adds the actual Overleaf code
-and services.
+The `develop/` directory contains a hot-reloading dev environment for all services:
 
-Use `make build-base` and `make build-community` from `server-ce/` to build these images.
+```shell
+cd develop
+bin/build        # build all service images (set COMPOSE_PARALLEL_LIMIT=1 in develop/.env if RAM-constrained)
+bin/up           # start everything
+```
 
-We use the [Phusion base-image](https://github.com/phusion/baseimage-docker)
-(which is extended by our `base` image) to provide us with a VM-like container
-in which to run the Overleaf services. Baseimage uses the `runit` service
-manager to manage services, and we add our init-scripts from the `server-ce/runit`
-folder.
+Then open <http://localhost/launchpad> to create the first admin account.
+
+For iterating on code, use development mode instead — services restart automatically on change via `node --watch`:
+
+```shell
+bin/dev                  # all services
+bin/dev web webpack      # or just the ones you're touching (webpack needed for frontend changes)
+```
+
+Debugger ports are exposed per service (`web` 9229, `clsi` 9230, `real-time` 9237, …) — full table in [`develop/README.md`](develop/README.md), attachable from Chrome DevTools (`chrome://inspect`) or any IDE.
+
+Deploys to production happen automatically: every push to `main` triggers the GitHub Actions workflow in [`.github/workflows/deploy-openlatex.yml`](.github/workflows/deploy-openlatex.yml), which builds and restarts the stack on the server. Develop on a branch; merging to `main` ships.
+
+## Docker images
+
+Two dockerfiles: [`server-ce/Dockerfile-base`](server-ce/Dockerfile-base) builds the heavy base (TeX Live + system deps); [`server-ce/Dockerfile`](server-ce/Dockerfile) layers the application services on top. The production compose file builds the latter directly, pulling the published base image. `make build-base && make build-community` from `server-ce/` builds both locally.
 
 ## Contributing
 
-Please see the [CONTRIBUTING](CONTRIBUTING.md) file for information on contributing to the development of Overleaf.
+Please see the [CONTRIBUTING](CONTRIBUTING.md) file for information on contributing.
 
 ## Authors
 
-[The Overleaf Team](https://www.overleaf.com/about)
+OpenLatex is maintained by [mytricker0](https://github.com/mytricker0).
+
+The underlying editor is the work of [the Overleaf Team](https://github.com/overleaf/overleaf) and its contributors — thank you.
 
 ## License
 
 The code in this repository is released under the GNU AFFERO GENERAL PUBLIC LICENSE, version 3. A copy can be found in the [`LICENSE`](LICENSE) file.
 
-Copyright (c) Overleaf, 2014-2025.
+Copyright (c) Overleaf, 2014-2025. OpenLatex modifications copyright (c) the OpenLatex contributors, 2026.
