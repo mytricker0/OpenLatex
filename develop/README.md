@@ -17,7 +17,21 @@ Then start the services:
 bin/up
 ```
 
-Once the services are running, open <http://localhost/launchpad> to create the first admin account.
+Once the services are running, open <http://127.0.0.1/launchpad> to create the first admin account.
+
+> [!NOTE]
+> Use `127.0.0.1` rather than `localhost`: on some machines `localhost` resolves to
+> IPv6 `::1`, while the dev server only binds IPv4, resulting in proxy errors.
+
+> [!NOTE]
+> The password may not contain any part of the email address — e.g. with
+> `test@test.test`, any password containing `test` is rejected.
+
+### MongoDB version
+
+`docker-compose.yml` pins `mongo:7`. `mongo:8` segfaults (exit 139, ~30 seconds after
+start, even with a clean data volume) on some hosts. If you change the major version,
+wipe the `develop_mongo-data` volume first — MongoDB cannot downgrade data files.
 
 ## Development
 
@@ -45,6 +59,29 @@ bin/dev [service1] [service2] ... [serviceN]
 > as well.
 
 If no services are named, all services will start in development mode.
+
+> [!WARNING]
+> `bin/dev` passes `--no-deps` to docker compose: naming services (e.g.
+> `bin/dev web webpack`) will **not** start mongo, redis, or the other services. Run
+> `bin/up` first to bring up the full stack, then use `bin/dev <services>` to switch
+> the ones you are working on into watch mode. If `web` logs
+> `getaddrinfo ENOTFOUND redis`, this is why.
+
+Container names follow the compose pattern `develop-<service>-1`
+(e.g. `docker logs -f develop-webpack-1`), or use `bin/logs <service>`.
+
+## Admin user management (CLI)
+
+Create an admin user — or generate a fresh one-time password-set URL for an existing
+user (this doubles as a command-line password reset, since the dev environment has no
+SMTP configured):
+
+```shell
+docker compose exec web node modules/server-ce-scripts/scripts/create-user.mjs --admin --email=you@example.com
+```
+
+This prints a URL such as `http://localhost/user/activate?token=...` — open it
+(swapping the host for `127.0.0.1` if needed) to set the password.
 
 ## Debugging
 

@@ -17,23 +17,14 @@ export default async function main() {
     process.exit(1)
   }
 
-  await new Promise((resolve, reject) => {
-    UserRegistrationHandler.registerNewUserAndSendActivationEmail(
-      email,
-      (error, user, setNewPasswordUrl) => {
-        if (error) {
-          return reject(error)
-        }
-        db.users.updateOne(
-          { _id: user._id },
-          { $set: { isAdmin: admin } },
-          error => {
-            if (error) {
-              return reject(error)
-            }
+  const { user, setNewPasswordUrl } =
+    await UserRegistrationHandler.promises.registerNewUserAndSendActivationEmail(
+      email
+    )
+  await db.users.updateOne({ _id: user._id }, { $set: { isAdmin: admin } })
 
-            console.log('')
-            console.log(`\
+  console.log('')
+  console.log(`\
 Successfully created ${email} as ${admin ? 'an admin' : 'a'} user.
 
 Please visit the following URL to set a password for ${email} and log in:
@@ -41,12 +32,6 @@ Please visit the following URL to set a password for ${email} and log in:
   ${setNewPasswordUrl}
 
 `)
-            resolve()
-          }
-        )
-      }
-    )
-  })
 }
 
 if (filename === process.argv[1]) {

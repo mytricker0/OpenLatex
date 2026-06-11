@@ -64,7 +64,7 @@ bin/build        # build all service images (set COMPOSE_PARALLEL_LIMIT=1 in dev
 bin/up           # start everything
 ```
 
-Then open <http://localhost/launchpad> to create the first admin account.
+Then open <http://127.0.0.1/launchpad> to create the first admin account (use `127.0.0.1` rather than `localhost` — on some machines `localhost` resolves to IPv6 and the dev server only binds IPv4).
 
 For iterating on code, use development mode instead — services restart automatically on change via `node --watch`:
 
@@ -72,6 +72,8 @@ For iterating on code, use development mode instead — services restart automat
 bin/dev                  # all services
 bin/dev web webpack      # or just the ones you're touching (webpack needed for frontend changes)
 ```
+
+Note that `bin/dev` with named services does **not** start their dependencies (mongo, redis, …) — run `bin/up` first, then switch individual services to watch mode. More dev tips (debugger ports, CLI admin/password management, known gotchas) in [`develop/README.md`](develop/README.md); current dev-environment state and open issues in [`handoff.md`](handoff.md).
 
 Debugger ports are exposed per service (`web` 9229, `clsi` 9230, `real-time` 9237, …) — full table in [`develop/README.md`](develop/README.md), attachable from Chrome DevTools (`chrome://inspect`) or any IDE.
 
