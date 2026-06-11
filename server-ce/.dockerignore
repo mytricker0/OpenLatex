@@ -8,3 +8,7 @@ server-ce/test
 services/web/scripts/plan-prices
 services/web/scripts/translations
 services/web/scripts/ukamf
+
+# OpenLatex deployment artifacts
+data/
+deploy/

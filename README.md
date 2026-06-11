@@ -1,27 +1,22 @@
 <h1 align="center">
   <br>
-  <a href="https://www.overleaf.com"><img src="doc/logo.png" alt="Overleaf" width="300"></a>
+  <a href="https://openlatex.dev"><img src="doc/logo.png" alt="OpenLatex" width="300"></a>
 </h1>
 
-<h4 align="center">An open-source online real-time collaborative LaTeX editor.</h4>
+<h4 align="center">A free, open-source online real-time collaborative LaTeX editor — up to 100 collaborators per project.</h4>
 
 <p align="center">
-  <a href="https://github.com/overleaf/overleaf/wiki">Wiki</a> •
-  <a href="https://www.overleaf.com/for/enterprises">Server Pro</a> •
+  <a href="https://openlatex.dev">openlatex.dev</a> •
   <a href="#contributing">Contributing</a> •
-  <a href="https://mailchi.mp/overleaf.com/community-edition-and-server-pro">Mailing List</a> •
   <a href="#authors">Authors</a> •
   <a href="#license">License</a>
 </p>
 
-<img src="doc/screenshot.png" alt="A screenshot of a project being edited in Overleaf Community Edition">
-<p align="center">
-  Figure 1: A screenshot of a project being edited in Overleaf Community Edition.
-</p>
+## OpenLatex
 
-## Community Edition
+OpenLatex is a free hosted collaborative LaTeX editor at [openlatex.dev](https://openlatex.dev): real-time collaboration with up to **100 collaborators per project**, no paywall on collaboration, no ads, no trackers.
 
-[Overleaf](https://www.overleaf.com) is an open-source online real-time collaborative LaTeX editor. We run a hosted version at [www.overleaf.com](https://www.overleaf.com), but you can also run your own local version, and contribute to the development of Overleaf.
+OpenLatex is based on the source code of [Overleaf Community Edition](https://github.com/overleaf/overleaf) (AGPL-3.0). It is an independent project and is not affiliated with or endorsed by Overleaf or Digital Science. In accordance with AGPL-3.0 §13, the complete source of the hosted service is this repository.
 
 > [!CAUTION]
 > Overleaf Community Edition is intended for use in environments where **all** users are trusted. Community Edition is **not** appropriate for scenarios where isolation of users is required due to Sandbox Compiles not being available. When not using Sandboxed Compiles, users have full read and write access to the `sharelatex` container resources (filesystem, network, environment variables) when running LaTeX compiles.

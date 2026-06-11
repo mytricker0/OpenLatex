@@ -1,0 +1,109 @@
+# OpenLatex production deployment.
+#
+# Security model: Community Edition compiles are NOT sandboxed — a compiling
+# user has read/write access inside the openlatex container (see README
+# caution). Mitigations applied here: no docker socket mount, internal-only
+# network for mongo/redis, no-new-privileges everywhere, resource limits so a
+# TeX bomb cannot take down the host, and the web port is only reachable via
+# nginx-proxy-manager on npm-network (never published on the host).
+
+services:
+    openlatex:
+        image: openlatex:latest
+        build:
+            context: ..
+            dockerfile: server-ce/Dockerfile
+        container_name: openlatex
+        restart: unless-stopped
+        depends_on:
+            mongo:
+                condition: service_healthy
+            redis:
+                condition: service_started
+        stop_grace_period: 60s
+        # No host port: nginx-proxy-manager reaches port 80 over npm-network.
+        expose:
+            - "80"
+        volumes:
+            - ../data/openlatex:/var/lib/overleaf
+            - openlatex-texlive:/usr/share/texlive
+            - openlatex-texlive-local:/usr/local/texlive
+        networks:
+            - npm-network
+            - openlatex-internal
+        security_opt:
+            - no-new-privileges:true
+        deploy:
+            resources:
+                limits:
+                    cpus: "3.0"
+                    memory: 4g
+        environment:
+            OVERLEAF_APP_NAME: OpenLatex
+            OVERLEAF_SITE_URL: https://openlatex.dev
+            OVERLEAF_NAV_TITLE: OpenLatex
+            OVERLEAF_BEHIND_PROXY: "true"
+            OVERLEAF_SECURE_COOKIE: "true"
+
+            OVERLEAF_MONGO_URL: mongodb://mongo/openlatex
+            OVERLEAF_REDIS_HOST: redis
+            REDIS_HOST: redis
+
+            ENABLED_LINKED_FILE_TYPES: "project_file,project_output_file"
+            ENABLE_CONVERSIONS: "true"
+            EMAIL_CONFIRMATION_DISABLED: "true"
+
+    mongo:
+        image: mongo:6.0
+        container_name: openlatex-mongo
+        restart: unless-stopped
+        command: "--replSet overleaf"
+        volumes:
+            - ../data/mongo:/data/db
+            - ../bin/shared/mongodb-init-replica-set.js:/docker-entrypoint-initdb.d/mongodb-init-replica-set.js:ro
+        environment:
+            MONGO_INITDB_DATABASE: openlatex
+        healthcheck:
+            test: echo 'db.stats().ok' | mongosh localhost:27017/test --quiet
+            interval: 10s
+            timeout: 10s
+            retries: 5
+        networks:
+            - openlatex-internal
+        security_opt:
+            - no-new-privileges:true
+        deploy:
+            resources:
+                limits:
+                    cpus: "1.0"
+                    memory: 1g
+
+    redis:
+        image: redis:6.2
+        container_name: openlatex-redis
+        restart: unless-stopped
+        volumes:
+            - ../data/redis:/data
+        networks:
+            - openlatex-internal
+        security_opt:
+            - no-new-privileges:true
+        read_only: true
+        tmpfs:
+            - /tmp
+        deploy:
+            resources:
+                limits:
+                    cpus: "0.5"
+                    memory: 512m
+
+networks:
+    npm-network:
+        external: true
+    openlatex-internal:
+        driver: bridge
+        internal: true
+
+volumes:
+    openlatex-texlive:
+    openlatex-texlive-local:
