@@ -1,11 +1,10 @@
 /* HUMANS */
-Name: Henry Oswald
-Twitter: @henryoswald
-Location: London UK
-www.henryoswald.me
+Name: Patrick Preda
+Location: Belgium
+www.preda.be
 
-Name: James Allen
-Location: UK
+Name: Patrick PREDA
+Location: BE
 
 /* SITE */
 technologies

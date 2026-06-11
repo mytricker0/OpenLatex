@@ -1,0 +1,31 @@
+// This file provides both Sass and CSS variables for motion (durations and
+// easing curves), plus a global guard for users who prefer reduced motion.
+
+$duration-fast: 150ms;
+$duration-base: 200ms;
+$duration-slow: 300ms;
+
+:root {
+  --duration-fast: #{$duration-fast};
+  --duration-base: #{$duration-base};
+  --duration-slow: #{$duration-slow};
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Disable non-essential animation for users who request reduced motion.
+// Durations are forced to a near-zero value rather than removed so that
+// transitionend/animationend events still fire.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+}

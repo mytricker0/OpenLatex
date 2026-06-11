@@ -82,6 +82,7 @@
     padding: 0 var(--spacing-02);
     flex-grow: 1;
     overflow: hidden;
+    transition: background-color var(--duration-fast) var(--easing-standard);
 
     &:hover {
       background-color: var(--file-tree-item-hover-bg);
@@ -107,6 +108,7 @@
     color: var(--file-tree-expand-button-color);
     padding: var(--spacing-02);
     border-radius: var(--border-radius-full);
+    transition: background-color var(--duration-fast) var(--easing-standard);
 
     &:hover {
       background-color: var(--file-tree-item-hover-bg);
@@ -376,8 +378,15 @@
         }
 
         background-color: transparent;
+        transition: background-color var(--duration-fast) var(--easing-standard);
 
         @include fake-full-width-bg(transparent);
+
+        // Keep the full-width background in sync with the row's own
+        // background while the hover transition runs
+        &::before {
+          transition: background-color var(--duration-fast) var(--easing-standard);
+        }
 
         &:hover {
           background-color: var(--file-tree-item-hover-bg);

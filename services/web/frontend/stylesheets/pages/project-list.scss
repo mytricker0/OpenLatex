@@ -78,6 +78,7 @@
       height: 200px;
       position: relative;
       cursor: pointer;
+      transition: background-color var(--duration-base) var(--easing-standard);
 
       @include media-breakpoint-up(lg) {
         margin: 0 var(--spacing-06);

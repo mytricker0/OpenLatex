@@ -70,6 +70,9 @@ body {
   background-color: var(--ide-rail-link-background);
   position: relative;
   overflow: visible;
+  transition:
+    color var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard);
 
   &.disabled {
     color: var(--content-disabled-themed);

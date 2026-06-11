@@ -22,6 +22,14 @@ $editor-toggler-bg-dark-color: color.adjust(
 #ide-root {
   @include full-height-stacked-page;
 
+  // Thin, theme-neutral scrollbars throughout the editor
+  // (scrollbar-color inherits; scrollbar-width does not)
+  scrollbar-color: var(--neutral-50) transparent;
+
+  * {
+    scrollbar-width: thin;
+  }
+
   .global-alerts {
     position: absolute;
     top: 0;
@@ -189,6 +197,7 @@ $editor-toggler-bg-dark-color: color.adjust(
   // Enable ::before and ::after pseudo-elements to position themselves correctly
   position: relative;
   background-color: var(--editor-resizer-bg-color);
+  transition: background-color var(--duration-base) var(--easing-standard);
 
   .custom-toggler {
     padding: 0;
@@ -225,6 +234,14 @@ $editor-toggler-bg-dark-color: color.adjust(
     cursor: default;
   }
 
+  &.horizontal-resize-handle-enabled:hover {
+    background-color: color-mix(
+      in srgb,
+      var(--bg-accent-01) 50%,
+      var(--editor-resizer-bg-color)
+    );
+  }
+
   .synctex-controls {
     left: -8px;
     margin: 0;
@@ -239,6 +256,22 @@ $editor-toggler-bg-dark-color: color.adjust(
   }
 }
 
+// Highlight handles while dragging and show a focus ring for keyboard
+// resizing (resize handles are focusable and respond to arrow keys)
+[data-resize-handle-state='drag'] > .horizontal-resize-handle-enabled,
+[data-resize-handle-state='drag'] > .vertical-resize-handle-enabled {
+  background-color: var(--bg-accent-01);
+}
+
+[data-resize-handle]:focus-visible {
+  outline: none;
+
+  > .horizontal-resize-handle,
+  > .vertical-resize-handle {
+    @include box-shadow-button-input;
+  }
+}
+
 .custom-toggler {
   position: absolute;
   display: flex;
@@ -249,6 +282,7 @@ $editor-toggler-bg-dark-color: color.adjust(
   margin-top: calc(var(--spacing-08) * -1);
   top: 50%;
   background-color: var(--editor-toggler-bg-color);
+  transition: background-color var(--duration-base) var(--easing-standard);
 
   .material-symbols {
     font-size: var(--font-size-02);
@@ -263,6 +297,10 @@ $editor-toggler-bg-dark-color: color.adjust(
   &:focus {
     outline: none;
     text-decoration: none;
+  }
+
+  &:focus-visible {
+    @include box-shadow-button-input;
   }
 
   // Increase hit area
@@ -281,10 +319,15 @@ $editor-toggler-bg-dark-color: color.adjust(
 .vertical-resize-handle {
   height: 6px;
   background-color: var(--editor-resizer-bg-color);
+  transition: background-color var(--duration-base) var(--easing-standard);
 
   &.vertical-resize-handle-enabled {
     &:hover {
-      background-color: var(--editor-resizer-bg-color);
+      background-color: color-mix(
+        in srgb,
+        var(--bg-accent-01) 50%,
+        var(--editor-resizer-bg-color)
+      );
     }
   }
 

@@ -76,7 +76,8 @@ function LeaveModalForm({
       <OLFormGroup controlId="email-input">
         <OLFormLabel>{t('email')}</OLFormLabel>
         <OLFormControl
-          type="text"
+          type="email"
+          autoComplete="email"
           required
           value={email}
           onChange={handleEmailChange}
@@ -86,6 +87,7 @@ function LeaveModalForm({
         <OLFormLabel>{t('password')}</OLFormLabel>
         <OLFormControl
           type="password"
+          autoComplete="current-password"
           required
           value={password}
           onChange={handlePasswordChange}
