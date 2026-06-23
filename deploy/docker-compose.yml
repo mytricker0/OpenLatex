@@ -65,6 +65,23 @@ services:
             ENABLE_CONVERSIONS: "true"
             EMAIL_CONFIRMATION_DISABLED: "true"
 
+            # --- Transactional email (Brevo SMTP) ---
+            # Open signup sends an activation email; without working SMTP the
+            # account is created but the user can never set a password. Creds
+            # come from deploy/.env. Brevo free tier = 300 emails/day, matched
+            # by the signup cap in the user-activate module.
+            OVERLEAF_EMAIL_FROM_ADDRESS: ${OVERLEAF_EMAIL_FROM_ADDRESS:-noreply@openlatex.dev}
+            OVERLEAF_EMAIL_SMTP_HOST: ${OVERLEAF_EMAIL_SMTP_HOST:-smtp-relay.brevo.com}
+            OVERLEAF_EMAIL_SMTP_PORT: ${OVERLEAF_EMAIL_SMTP_PORT:-587}
+            OVERLEAF_EMAIL_SMTP_SECURE: ${OVERLEAF_EMAIL_SMTP_SECURE:-false}
+            OVERLEAF_EMAIL_SMTP_USER: ${OVERLEAF_EMAIL_SMTP_USER:-}
+            OVERLEAF_EMAIL_SMTP_PASS: ${OVERLEAF_EMAIL_SMTP_PASS:-}
+
+            # --- Optional: reCAPTCHA on signup/login (defence vs bot signups
+            # and activation-email spam). Inert until both keys are set. ---
+            RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
+            RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
+
             # --- Secrets (deploy/.env, gitignored). Compose fails if unset. ---
             OVERLEAF_INVITE_TOKEN_SECRET: ${OVERLEAF_INVITE_TOKEN_SECRET:?set in deploy/.env — openssl rand -base64 32}
             SESSION_SECRET: ${SESSION_SECRET:?set in deploy/.env — openssl rand -base64 32}

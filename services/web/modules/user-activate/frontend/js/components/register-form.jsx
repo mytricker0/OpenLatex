@@ -53,7 +53,11 @@ function RegisterForm({
 
   function registerUser(email) {
     const options = { email }
-    const url = `/admin/register`
+    // Admin bulk-registration posts to the admin-gated endpoint; the public
+    // signup page (/register) posts to the rate-limited public endpoint.
+    const url = window.location.pathname.startsWith('/admin/')
+      ? '/admin/register'
+      : '/register'
     return postJSON(url, { body: options })
   }
 

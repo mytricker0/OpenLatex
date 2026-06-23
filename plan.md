@@ -120,6 +120,30 @@ Proxy Manager (NPM) on `npm-network`. **Wired into the deploy compose:**
   (`deploy/deploy.sh`) has only been validated piecewise (compose config +
   the dev sandbox), not end-to-end on the server.
 
+### 5c. Authentication & open signup
+
+Sign-in is stock CE (`/login`). Open self-service signup is **not** a CE
+feature (the register form posts to the admin-only `/admin/register`), so the
+fork adds it:
+
+- Public rate-limited `POST /register` (user-activate module) reusing the
+  existing create-user + activation-email flow. The activation email is the
+  email-confirmation step (account gets a random password; the user sets one
+  via the emailed link).
+- **Caps:** per-IP 20/day + a global 300/day ceiling, matched to the Brevo
+  free tier (300 emails/day) so we never silently fail to send activation
+  mail. Admin bulk-registration keeps its own `/admin/register` path.
+- **Captcha:** `CaptchaMiddleware.validateCaptcha('register')` is wired and
+  inert until `RECAPTCHA_SITE_KEY`/`RECAPTCHA_SECRET_KEY` are set, then
+  reCAPTCHA activates on signup + login. Recommended before public launch —
+  the rate caps slow bots but captcha is the real defence against
+  activation-email spam.
+- **Email:** Brevo SMTP via `OVERLEAF_EMAIL_SMTP_*` (deploy/.env). Do not
+  self-host SMTP (deliverability/port-25/reputation). Authenticate the sender
+  domain in Brevo (SPF/DKIM) or activation mail lands in spam.
+- Follow-up polish: the public `/register` page currently reuses the admin
+  bulk-email form component; a single-email "Sign up" form is nicer UX.
+
 ### 5b. Goal: Sandboxed Compiles (Server Pro parity)
 
 CE compiles run inside the main container via `LocalCommandRunner` — a compiling user has read/write access to the container (upstream README caution). Server Pro fixes this with per-compile sibling Docker containers; the implementation (`services/clsi/app/js/DockerRunner.js`) is **not in the open repo** — but its full unit test is (`services/clsi/test/unit/js/DockerRunner.test.js`). That test is our interface spec.

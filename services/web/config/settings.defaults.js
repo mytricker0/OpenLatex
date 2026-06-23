@@ -839,6 +839,11 @@ module.exports = {
   //   header_extras: [{text: "Some Page", url: "http://example.com/some/page", class: "subdued"}]
 
   recaptcha: {
+    // Set RECAPTCHA_SITE_KEY + RECAPTCHA_SECRET_KEY to enable reCAPTCHA on the
+    // public signup and login forms (protects open registration from bot
+    // signups / activation-email spam). Inert when unset.
+    siteKey: process.env.RECAPTCHA_SITE_KEY,
+    secretKey: process.env.RECAPTCHA_SECRET_KEY,
     endpoint:
       process.env.RECAPTCHA_ENDPOINT ||
       'https://www.google.com/recaptcha/api/siteverify',
@@ -852,9 +857,10 @@ module.exports = {
       : null,
     disabled: {
       invite: true,
-      login: true,
+      // login + register captcha activate only once a site key is configured.
+      login: !process.env.RECAPTCHA_SITE_KEY,
       passwordReset: true,
-      register: true,
+      register: !process.env.RECAPTCHA_SITE_KEY,
       addEmail: true,
     },
   },
