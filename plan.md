@@ -90,16 +90,23 @@ Reuse the decommissioned Overleaf stack's shape (compose: sharelatex + mongo 6 (
 
 ### 5b. Goal: Sandboxed Compiles (Server Pro parity)
 
-CE compiles run inside the main container via `LocalCommandRunner` — a compiling user has read/write access to the container (upstream README caution). Server Pro fixes this with per-compile sibling Docker containers; the implementation (`services/clsi/app/js/DockerRunner.js`) is **not in the open repo** — but its full unit test is (`services/clsi/test/unit/js/DockerRunner.test.js`, ~1,100 lines). That test is our interface spec.
+CE compiles run inside the main container via `LocalCommandRunner` — a compiling user has read/write access to the container (upstream README caution). Server Pro fixes this with per-compile sibling Docker containers; the implementation (`services/clsi/app/js/DockerRunner.js`) is **not in the open repo** — but its full unit test is (`services/clsi/test/unit/js/DockerRunner.test.js`). That test is our interface spec.
 
-Plan (clean-room, AGPL-fine since we write it ourselves):
-1. Implement `DockerRunner.js` against the existing test: run each compile in a fresh `texlive` container via dockerode — project dir bind-mounted, **network disabled**, CPU/memory/pids limits, timeout kill, non-root user.
-2. `CommandRunner.js` already switches on `Settings.clsi.dockerRunner === true` — wire a `SANDBOXED_COMPILES=true` env through server-ce config to set it.
-3. Docker access: do NOT mount the raw docker socket into the app container. Use a socket proxy (`tecnativa/docker-socket-proxy`) on the internal network allowing only container create/start/wait/stop/remove + image inspect, denying exec/volumes/swarm/host config.
-4. TexLive image: official `texlive/texlive` pinned digest; compile containers get `--read-only` rootfs except the mounted compile dir.
-5. Acceptance: the existing DockerRunner unit test passes; a malicious `\write18`/large-file/fork-bomb project cannot touch the app container or other projects' files.
+**Status: clean-room implementation DONE and unit-test-validated** (commit `c92c48b30c`, branch `openlatex-setup`). `services/clsi/app/js/DockerRunner.js` (654 lines) + `services/clsi/seccomp/clsi-profile.json` (1024 lines) written from scratch against the test spec. **All 64 DockerRunner unit tests pass** (vitest), including the `security hardening` block: network disabled, all caps dropped, seccomp + apparmor applied, no CLSI env leak, memory/pids/cpu caps, read-only compile mount.
 
-Until shipped: public registration stays invite-only (the compose hardening contains damage to the app container, but multi-tenant isolation is not real without this).
+What is built (verified in source):
+1. ✅ `DockerRunner.js` — each compile runs in a fresh container via dockerode: `NetworkDisabled: true`, `CapDrop: ['ALL']`, `Memory: 1 GB`, `PidsLimit: 4096`, configurable non-root `User`, compile dir mounted read-only for synctex/wordcount, timeout kill + old-container reaper.
+2. ✅ `CommandRunner.js:12` switches on `Settings.clsi.dockerRunner === true`; clsi `settings.defaults.cjs:122` sets it from `DOCKER_RUNNER || SANDBOXED_COMPILES === 'true'`. Production `docker-compose.yml:82` sets `SANDBOXED_COMPILES: "true"`.
+
+What remains before public multi-tenant launch:
+3. ⚠️ **Socket hardening NOT done.** Root `docker-compose.yml:22` still mounts the **raw** `/var/run/docker.sock` into the app container. Replace with a socket proxy (`tecnativa/docker-socket-proxy`) on the internal network allowing only container create/start/wait/stop/remove + image inspect, denying exec/volumes/swarm/host config.
+4. ⚠️ TexLive image: pin `texlive/texlive` to a digest; confirm `--read-only` rootfs end-to-end (compile dir is already the only writable mount).
+5. ⚠️ **Image rebuild required.** The current local clsi image was built from `main` (no `DockerRunner.js`); the running container only picks it up via the dev bind-mount. Any deploy must `docker build` clsi from this branch, else sandboxing silently falls back to `LocalCommandRunner`.
+6. ⚠️ Dev stack runs unsandboxed by design (`develop/docker-compose.yml` sets `SANDBOXED_COMPILES=false`). To exercise the sandbox locally: flip it true, provide a texlive image, mount the socket (proxy preferred).
+
+Acceptance: DockerRunner unit test passes (**done — 64/64**); a malicious `\write18`/large-file/fork-bomb project cannot touch the app container or other projects' files (**still to run as a live end-to-end test**).
+
+Until socket hardening (item 3) ships: public registration stays invite-only (the compose hardening contains damage to the app container, but multi-tenant isolation is not real without the socket proxy).
 
 > Overleaf's wiki labels sandboxed compiles a Server Pro *feature*, but the AGPL repo legally permits us to build the same capability ourselves. We only may not copy their proprietary module or call it by their product names.
 5. Backups: nightly `mongodump` + tar of data dirs to off-box storage. **This holds people's theses — backups before launch, not after.**
