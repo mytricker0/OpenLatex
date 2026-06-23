@@ -60,7 +60,14 @@ module.exports = {
       outputUrlPrefix: `${process.env.ZONE ? `/zone/${process.env.ZONE}` : ''}`,
       clsiServerId: process.env.CLSI_SERVER_ID || CLSI_SERVER_ID,
 
-      downloadHost: process.env.DOWNLOAD_HOST || 'http://localhost:8080',
+      // DOWNLOAD_HOST is operator config (not user input). The web service
+      // consumes it as a bare host (`http://${DOWNLOAD_HOST}:8080`), but the
+      // clsi builds an absolute output-file URL from it, so normalise a
+      // scheme-less value here. Trusted-config normalisation only — do NOT
+      // make the user-facing output-file URL parser lenient.
+      downloadHost: /^[a-z]+:\/\//i.test(process.env.DOWNLOAD_HOST || '')
+        ? process.env.DOWNLOAD_HOST
+        : `http://${process.env.DOWNLOAD_HOST || 'localhost:8080'}`,
     },
     clsiPerf: {
       host: `${process.env.CLSI_PERF_HOST || '127.0.0.1'}:${
