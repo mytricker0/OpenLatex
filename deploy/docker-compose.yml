@@ -1,11 +1,18 @@
 # OpenLatex production deployment.
 #
-# Security model: Community Edition compiles are NOT sandboxed — a compiling
-# user has read/write access inside the openlatex container (see README
-# caution). Mitigations applied here: no docker socket mount, internal-only
-# network for mongo/redis, no-new-privileges everywhere, resource limits so a
-# TeX bomb cannot take down the host, and the web port is only reachable via
-# nginx-proxy-manager on npm-network (never published on the host).
+# Security model:
+#  - Compiles are sandboxed: each LaTeX run executes in its own per-compile
+#    container under the gVisor (runsc) runtime, reached via a least-privilege
+#    docker-socket-proxy (the app never mounts the raw docker socket). Network
+#    disabled, all caps dropped, read-only rootfs, non-root, resource-capped.
+#    REQUIRES gVisor on the host: `sudo bash develop/bin/install-gvisor.sh`.
+#    To run without it (CE LocalCommandRunner, unsandboxed) set
+#    SANDBOXED_COMPILES=false in deploy/.env and keep registration invite-only.
+#  - mongo/redis on an internal-only network; no-new-privileges everywhere;
+#    resource limits so a TeX bomb cannot take down the host; the web port is
+#    only reachable via nginx-proxy-manager on npm-network (never published).
+#  - Secrets (session, invite token) come from deploy/.env (gitignored);
+#    compose refuses to start if they are unset. See deploy/.env.example.
 
 services:
     openlatex:
@@ -20,12 +27,17 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_started
+            dockerproxy:
+                condition: service_started
         stop_grace_period: 60s
         # No host port: nginx-proxy-manager reaches port 80 over npm-network.
         expose:
             - "80"
         volumes:
-            - ../data/openlatex:/var/lib/overleaf
+            # Absolute host path so the per-compile sibling containers can
+            # bind-mount the same compiles/output dirs (the docker daemon needs
+            # the host-side path, not the in-container one).
+            - ${OPENLATEX_DATA_DIR:?set OPENLATEX_DATA_DIR in deploy/.env}/openlatex:/var/lib/overleaf
             - openlatex-texlive:/usr/share/texlive
             - openlatex-texlive-local:/usr/local/texlive
         networks:
@@ -52,6 +64,53 @@ services:
             ENABLED_LINKED_FILE_TYPES: "project_file,project_output_file"
             ENABLE_CONVERSIONS: "true"
             EMAIL_CONFIRMATION_DISABLED: "true"
+
+            # --- Secrets (deploy/.env, gitignored). Compose fails if unset. ---
+            OVERLEAF_INVITE_TOKEN_SECRET: ${OVERLEAF_INVITE_TOKEN_SECRET:?set in deploy/.env — openssl rand -base64 32}
+            SESSION_SECRET: ${SESSION_SECRET:?set in deploy/.env — openssl rand -base64 32}
+
+            # --- Sandboxed compiles (per-compile gVisor sibling containers) ---
+            # Reaches the daemon through the dockerproxy below, not the raw
+            # socket. Set SANDBOXED_COMPILES=false in deploy/.env to opt out.
+            SANDBOXED_COMPILES: ${SANDBOXED_COMPILES:-true}
+            DOCKER_RUNNER: ${SANDBOXED_COMPILES:-true}
+            DOCKER_RUNTIME: ${DOCKER_RUNTIME:-runsc}
+            DOCKER_HOST: tcp://dockerproxy:2375
+            # Pin to a digest in production (texlive/texlive:...@sha256:...).
+            TEXLIVE_IMAGE: ${TEXLIVE_IMAGE:-texlive/texlive:latest-small}
+            ALLOWED_IMAGES: ${TEXLIVE_IMAGE:-texlive/texlive:latest-small}
+            TEXLIVE_IMAGE_USER: ${TEXLIVE_IMAGE_USER:-1000}
+            SANDBOXED_COMPILES_HOST_DIR_COMPILES: ${OPENLATEX_DATA_DIR:?set OPENLATEX_DATA_DIR in deploy/.env}/openlatex/data/compiles
+            SANDBOXED_COMPILES_HOST_DIR_OUTPUT: ${OPENLATEX_DATA_DIR:?set OPENLATEX_DATA_DIR in deploy/.env}/openlatex/data/output
+
+    # Least-privilege mediator in front of the docker daemon so the app never
+    # mounts the raw socket. Only container + image APIs enabled; exec,
+    # volumes, networks, swarm, secrets denied; socket mounted read-only.
+    dockerproxy:
+        image: tecnativa/docker-socket-proxy:0.3.0
+        container_name: openlatex-dockerproxy
+        restart: unless-stopped
+        environment:
+            CONTAINERS: 1
+            IMAGES: 1
+            POST: 1
+            INFO: 1
+            PING: 1
+            VERSION: 1
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        read_only: true
+        tmpfs:
+            - /run
+        networks:
+            - openlatex-internal
+        security_opt:
+            - no-new-privileges:true
+        deploy:
+            resources:
+                limits:
+                    cpus: "0.5"
+                    memory: 128m
 
     mongo:
         image: mongo:6.0

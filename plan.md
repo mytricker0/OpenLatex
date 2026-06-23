@@ -88,31 +88,37 @@ Reuse the decommissioned Overleaf stack's shape (compose: sharelatex + mongo 6 (
 3. nginx-proxy-manager: new proxy host + Let's Encrypt cert for **openlatex.dev** (domain owned).
 4. Compile safety on a shared box: keep default `compileTimeout: 180` initially (settings.defaults.js:420), `--no-shell-escape` (CE default), container CPU/memory limits in compose. Revisit timeout if CPU contention appears.
 
-### 5a. Reverse-proxy hardening (production behind Nginx Proxy Manager) — TODO
+### 5a. Reverse-proxy + production hardening (behind Nginx Proxy Manager)
 
-Production runs behind the existing Nginx Proxy Manager (NPM) on `npm-network`.
-NPM terminates TLS and proxies to the app container. Until the items below are
-wired into the production root compose, the deployment is not proxy-safe.
-**Not yet implemented — do during the deploy step:**
+Production runs from `deploy/docker-compose.yml` behind the existing Nginx
+Proxy Manager (NPM) on `npm-network`. **Wired into the deploy compose:**
 
-1. **Trust the proxy.** Set `OVERLEAF_BEHIND_PROXY=true` and
-   `OVERLEAF_SECURE_COOKIE=true` on the app container. Without these the
-   session cookie is not `Secure` and Express sees NPM's IP instead of the real
-   client — breaking the `Secure` flag and IP-based rate limiting.
-2. **Do not expose the app port to the host.** The root compose currently
-   publishes `80:80` on `0.0.0.0`, which is reachable bypassing NPM. Drop the
-   host publish and attach the app to the external `npm-network` so only NPM
-   can reach it (proxy by container name), or at most bind `127.0.0.1:80`.
-3. **NPM proxy host config:** enable **Websockets Support** (Overleaf
-   real-time/collaboration fails without it), Force SSL, HTTP/2, HSTS, and a
-   Let's Encrypt cert for the domain.
-4. **Canonical URL.** Set `OVERLEAF_SITE_URL=https://<domain>` so absolute
-   URLs, redirects and CSRF checks use the real origin.
-5. **Secrets.** Set a strong `OVERLEAF_INVITE_TOKEN_SECRET` (web currently logs
-   that link-sharing token encryption is uninitialised) and `SESSION_SECRET`
-   before any non-local deploy. Generate with `openssl rand -base64 32`.
-6. Keep the `dockerproxy` (docker-socket-proxy) and the per-compile sibling
-   containers on internal networks only — never proxied or published.
+1. ✅ **Trust the proxy** — `OVERLEAF_BEHIND_PROXY=true` + `OVERLEAF_SECURE_COOKIE=true`
+   (Secure session cookie; real client IP for rate limiting).
+2. ✅ **No host port** — the app only `expose`s 80 on `npm-network`; never
+   published on the host, so it cannot be reached bypassing NPM. mongo/redis
+   are on an `internal: true` network.
+3. ✅ **Canonical URL** — `OVERLEAF_SITE_URL=https://openlatex.dev`.
+4. ✅ **Secrets from `deploy/.env`** (gitignored) — `OVERLEAF_INVITE_TOKEN_SECRET`
+   and `SESSION_SECRET`; compose refuses to start if unset (`:?`). See
+   `deploy/.env.example`.
+5. ✅ **Sandboxed compiles in production** — `SANDBOXED_COMPILES=true` +
+   `DOCKER_RUNTIME=runsc`, daemon reached through an internal-only
+   `dockerproxy` (docker-socket-proxy), never the raw socket. Toggle off via
+   `.env` if gVisor is not installed.
+6. ✅ `dockerproxy` and the per-compile sibling containers stay on internal
+   networks only — never proxied or published.
+
+**Still operator/host steps at deploy time (not code):**
+- Install gVisor on the prod host (`sudo bash develop/bin/install-gvisor.sh`)
+  or set `SANDBOXED_COMPILES=false` in `.env`.
+- Fill `deploy/.env` (`OPENLATEX_DATA_DIR` absolute, the two secrets); pin
+  `TEXLIVE_IMAGE` to a digest.
+- **NPM proxy host UI:** enable **Websockets Support** (real-time/collab fails
+  without it), Force SSL, HTTP/2, HSTS, Let's Encrypt cert for the domain.
+- Run a real deploy smoke test: the monolith sandboxed-compile path
+  (`deploy/deploy.sh`) has only been validated piecewise (compose config +
+  the dev sandbox), not end-to-end on the server.
 
 ### 5b. Goal: Sandboxed Compiles (Server Pro parity)
 
