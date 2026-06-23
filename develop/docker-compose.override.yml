@@ -1,0 +1,6 @@
+services:
+  webpack:
+    # Host nginx already owns :80, so expose the dev UI on :8080 instead.
+    # `!override` replaces the base port list (compose merges lists additively otherwise).
+    ports: !override
+      - "127.0.0.1:8080:3808"
