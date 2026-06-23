@@ -142,6 +142,10 @@ if ((process.env.DOCKER_RUNNER || process.env.SANDBOXED_COMPILES) === 'true') {
         CLSI: 1,
       },
       socketPath: '/var/run/docker.sock',
+      // When set (e.g. tcp://dockerproxy:2375) the clsi talks to a
+      // least-privilege docker-socket-proxy instead of mounting the raw
+      // docker socket into the app container.
+      dockerHost: process.env.DOCKER_HOST,
       user: process.env.TEXLIVE_IMAGE_USER || 'tex',
     },
     optimiseInDocker: true,

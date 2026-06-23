@@ -17,9 +17,66 @@ const MAX_OUTPUT = 1024 * 1024 * 2 // limit ourselves to 2MB of output
 
 const READ_ONLY_COMPILE_GROUPS = ['synctex', 'synctex-output', 'wordcount']
 
-const dockerode = new Docker({
-  socketPath: Settings.clsi?.docker?.socketPath || '/var/run/docker.sock',
-})
+// Container option paths that define the sandbox boundary. A misconfigured
+// COMPILE_GROUP_DOCKER_CONFIGS must never be able to weaken these via the
+// per-compile-group override mechanism below, so they are refused outright.
+const SECURITY_CRITICAL_OPTION_KEYS = new Set([
+  'NetworkDisabled',
+  'User',
+  'Memory',
+  'Privileged',
+  'HostConfig.Privileged',
+  'HostConfig.CapAdd',
+  'HostConfig.CapDrop',
+  'HostConfig.NetworkMode',
+  'HostConfig.Binds',
+  'HostConfig.SecurityOpt',
+  'HostConfig.Devices',
+  'HostConfig.DeviceCgroupRules',
+  'HostConfig.ReadonlyRootfs',
+  'HostConfig.PidsLimit',
+  'HostConfig.Init',
+  'HostConfig.UsernsMode',
+  'HostConfig.IpcMode',
+  'HostConfig.PidMode',
+  'HostConfig.CgroupnsMode',
+  'HostConfig.Sysctls',
+  'HostConfig.Runtime',
+])
+
+function isSecurityCriticalOptionKey(key) {
+  if (SECURITY_CRITICAL_OPTION_KEYS.has(key)) {
+    return true
+  }
+  // also catch nested writes, e.g. 'HostConfig.CapAdd.0'
+  for (const critical of SECURITY_CRITICAL_OPTION_KEYS) {
+    if (key.startsWith(critical + '.')) {
+      return true
+    }
+  }
+  return false
+}
+
+// Prefer a TCP endpoint (a least-privilege docker-socket-proxy) when one is
+// configured, so the app container never has to mount the raw docker socket.
+// Fall back to the unix socket for single-tenant/dev setups.
+function _dockerodeOptions() {
+  const dockerHost = Settings.clsi?.docker?.dockerHost
+  if (dockerHost) {
+    const url = new URL(dockerHost)
+    const scheme = url.protocol.replace(':', '')
+    return {
+      host: url.hostname,
+      port: url.port || (scheme === 'https' ? 2376 : 2375),
+      protocol: scheme === 'tcp' ? 'http' : scheme,
+    }
+  }
+  return {
+    socketPath: Settings.clsi?.docker?.socketPath || '/var/run/docker.sock',
+  }
+}
+
+const dockerode = new Docker(_dockerodeOptions())
 
 // The compile and output directories are bind-mounted from the host, so the
 // paths the CLSI sees are not the paths the docker daemon needs. When these
@@ -224,6 +281,14 @@ const DockerRunner = {
         NetworkMode: 'none',
         PidsLimit: 4096,
         Init: true,
+        // The compile bind (/compile) is the only writable mount the compile
+        // needs. Make the rest of the container filesystem read-only so a
+        // hostile document cannot tamper with binaries/config inside the
+        // image, and give it a size-capped tmpfs for HOME (/tmp) scratch.
+        // tmpfs usage counts against the 1 GB Memory cgroup above, so it
+        // cannot be used to exhaust host disk.
+        ReadonlyRootfs: true,
+        Tmpfs: { '/tmp': 'rw,nosuid,nodev,size=512m,mode=1777' },
       },
     }
 
@@ -247,6 +312,13 @@ const DockerRunner = {
       Settings.clsi.docker.compileGroupConfig?.[compileGroup]
     if (compileGroupConfig != null) {
       for (const [key, value] of Object.entries(compileGroupConfig)) {
+        if (isSecurityCriticalOptionKey(key)) {
+          logger.error(
+            { compileGroup, key },
+            'refusing to override security-critical container option from compileGroupConfig'
+          )
+          continue
+        }
         _.set(options, key, value)
       }
     }

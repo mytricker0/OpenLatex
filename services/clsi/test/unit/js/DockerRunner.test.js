@@ -623,6 +623,42 @@ describe('DockerRunner', () => {
         ])
       })
 
+      it('should run with a read-only root filesystem and a size-capped tmpfs', ctx => {
+        const options = runAndGetOptions(ctx)
+        expect(options.HostConfig.ReadonlyRootfs).to.equal(true)
+        expect(options.HostConfig.Tmpfs).to.have.property('/tmp')
+        expect(options.HostConfig.Tmpfs['/tmp']).to.match(/size=/)
+        expect(options.HostConfig.Tmpfs['/tmp']).to.match(/nosuid/)
+      })
+
+      it('should refuse compileGroupConfig overrides of security-critical options', ctx => {
+        ctx.Settings.clsi.docker.compileGroupConfig = {
+          [ctx.compileGroup]: {
+            'HostConfig.Privileged': true,
+            'HostConfig.CapAdd': ['SYS_ADMIN'],
+            'HostConfig.NetworkMode': 'host',
+            'HostConfig.Binds': ['/:/host'],
+            'HostConfig.ReadonlyRootfs': false,
+            User: 'root',
+          },
+        }
+        const options = runAndGetOptions(ctx)
+        expect(options.HostConfig.Privileged).to.equal(undefined)
+        expect(options.HostConfig.CapAdd).to.equal(undefined)
+        expect(options.HostConfig.NetworkMode).to.equal('none')
+        expect(options.HostConfig.Binds).to.not.include('/:/host')
+        expect(options.HostConfig.ReadonlyRootfs).to.equal(true)
+        expect(options.User).to.equal('tex')
+      })
+
+      it('should still allow non-security compileGroupConfig overrides', ctx => {
+        ctx.Settings.clsi.docker.compileGroupConfig = {
+          [ctx.compileGroup]: { 'HostConfig.AutoRemove': true },
+        }
+        const options = runAndGetOptions(ctx)
+        expect(options.HostConfig.AutoRemove).to.equal(true)
+      })
+
       it('should mount the compile directory read-only for synctex and wordcount', ctx => {
         for (const compileGroup of ['synctex', 'wordcount']) {
           const options = runAndGetOptions(ctx, { compileGroup })

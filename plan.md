@@ -98,15 +98,22 @@ What is built (verified in source):
 1. ✅ `DockerRunner.js` — each compile runs in a fresh container via dockerode: `NetworkDisabled: true`, `CapDrop: ['ALL']`, `Memory: 1 GB`, `PidsLimit: 4096`, configurable non-root `User`, compile dir mounted read-only for synctex/wordcount, timeout kill + old-container reaper.
 2. ✅ `CommandRunner.js:12` switches on `Settings.clsi.dockerRunner === true`; clsi `settings.defaults.cjs:122` sets it from `DOCKER_RUNNER || SANDBOXED_COMPILES === 'true'`. Production `docker-compose.yml:82` sets `SANDBOXED_COMPILES: "true"`.
 
+Hardening done in the security pass (commit follows):
+- ✅ **Read-only rootfs.** `DockerRunner.js` now sets `ReadonlyRootfs: true` + a 512 MB `nosuid,nodev` tmpfs for `/tmp` (HOME). Compile dir (`/compile`) is the only writable mount; tmpfs counts against the 1 GB memory cgroup so it can't exhaust host disk.
+- ✅ **compileGroupConfig can no longer weaken the sandbox.** The `_.set(options, key, value)` override path now refuses security-critical keys (Privileged, CapAdd/CapDrop, NetworkMode, Binds, SecurityOpt, User, ReadonlyRootfs, runtime, namespaces, …), so a malformed `COMPILE_GROUP_DOCKER_CONFIGS` cannot silently disable isolation.
+- ✅ **No raw docker socket in the app container.** Root `docker-compose.yml` mounts the socket only into a least-privilege `tecnativa/docker-socket-proxy` (containers + images APIs, everything else denied, socket read-only); the app reaches the daemon via `DOCKER_HOST=tcp://dockerproxy:2375`. `DockerRunner.js` learned a TCP endpoint mode for this.
+- ✅ **Image allowlist wired.** `ALLOWED_IMAGES` set in compose (defence-in-depth on top of the web-side `allowedImageNames` gate, which already no-ops unknown images in CE).
+
 What remains before public multi-tenant launch:
-3. ⚠️ **Socket hardening NOT done.** Root `docker-compose.yml:22` still mounts the **raw** `/var/run/docker.sock` into the app container. Replace with a socket proxy (`tecnativa/docker-socket-proxy`) on the internal network allowing only container create/start/wait/stop/remove + image inspect, denying exec/volumes/swarm/host config.
-4. ⚠️ TexLive image: pin `texlive/texlive` to a digest; confirm `--read-only` rootfs end-to-end (compile dir is already the only writable mount).
+3. ⚠️ **Socket proxy is partial.** It cuts the API surface and gives an audit point, but a process that can create containers can still request a *privileged* one. Real host isolation needs a sandboxed runtime — `DOCKER_RUNTIME=runsc` (gVisor) or `sysbox-runc` (DockerRunner already supports `runtime`); wired as a commented option in compose, needs host install + enabling.
+4. ⚠️ **Pin + update the texlive image.** Default is `texlive-full:2017.1` — years-old ghostscript/poppler/freetype with known CVEs reachable from a document. Pin to a digest and move to a current image (verify the `tex` user / paths first; swapping images can break compiles).
 5. ⚠️ **Image rebuild required.** The current local clsi image was built from `main` (no `DockerRunner.js`); the running container only picks it up via the dev bind-mount. Any deploy must `docker build` clsi from this branch, else sandboxing silently falls back to `LocalCommandRunner`.
-6. ⚠️ Dev stack runs unsandboxed by design (`develop/docker-compose.yml` sets `SANDBOXED_COMPILES=false`). To exercise the sandbox locally: flip it true, provide a texlive image, mount the socket (proxy preferred).
+6. ⚠️ Dev stack runs unsandboxed by design (`develop/docker-compose.yml` sets `SANDBOXED_COMPILES=false`). To exercise the sandbox locally: flip it true, provide a texlive image, point at the proxy.
+7. ⚠️ Operational: set `OVERLEAF_INVITE_TOKEN_SECRET` (web currently logs that link-sharing token encryption is uninitialised) and a strong `SESSION_SECRET` before any non-local deploy.
 
-Acceptance: DockerRunner unit test passes (**done — 64/64**); a malicious `\write18`/large-file/fork-bomb project cannot touch the app container or other projects' files (**still to run as a live end-to-end test**).
+Acceptance: DockerRunner unit tests pass (**done — 77/77, incl. the new hardening tests**); a malicious `\write18`/large-file/fork-bomb project cannot touch the app container or other projects' files (**still to run as a live end-to-end test**).
 
-Until socket hardening (item 3) ships: public registration stays invite-only (the compose hardening contains damage to the app container, but multi-tenant isolation is not real without the socket proxy).
+Until a sandboxed runtime (item 3) is in place: public registration stays invite-only — the per-compile container now strongly contains a hostile *document*, but a hostile *container-create* via a compromised app is only fully stopped by gVisor/sysbox.
 
 > Overleaf's wiki labels sandboxed compiles a Server Pro *feature*, but the AGPL repo legally permits us to build the same capability ourselves. We only may not copy their proprietary module or call it by their product names.
 5. Backups: nightly `mongodump` + tar of data dirs to off-box storage. **This holds people's theses — backups before launch, not after.**

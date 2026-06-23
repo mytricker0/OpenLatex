@@ -10,16 +10,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      dockerproxy:
+        condition: service_started
     ports:
       - 80:80
     stop_grace_period: 60s
     volumes:
       - ~/sharelatex_data:/var/lib/overleaf
       ########################################################################
-      ####  The docker socket mount is required for Sandboxed Compiles    ####
-      ####  (sibling containers). Remove it if SANDBOXED_COMPILES is off. ####
+      ####  Sandboxed Compiles reach the docker daemon through the         ####
+      ####  least-privilege `dockerproxy` service below (DOCKER_HOST env), ####
+      ####  NOT by mounting the raw docker socket into this container.     ####
+      ####  Never add `- /var/run/docker.sock:/var/run/docker.sock` here:  ####
+      ####  it grants trivial host root to anyone who compromises the app. ####
       ########################################################################
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       OVERLEAF_APP_NAME: Overleaf Community Edition
 
@@ -87,6 +91,20 @@ services:
       ### Backwards compatibility (before Server Pro 5.5)
       DOCKER_RUNNER: "true"
       SANDBOXED_COMPILES_SIBLING_CONTAINERS: "true"
+      ### Reach the daemon via the least-privilege proxy, not the raw socket.
+      DOCKER_HOST: "tcp://dockerproxy:2375"
+      ### The image compiles run in. Keep in sync with ALLOWED_IMAGES below.
+      ### SECURITY: pin to a digest (image@sha256:...) and update regularly —
+      ### the 2017.1 default ships years-old ghostscript/poppler/freetype with
+      ### known CVEs that a malicious document can reach.
+      TEXLIVE_IMAGE: "quay.io/sharelatex/texlive-full:2017.1"
+      ### Restrict which compile images may run (defence-in-depth on top of the
+      ### web-side allowlist).
+      ALLOWED_IMAGES: "quay.io/sharelatex/texlive-full:2017.1"
+      ### Strongest per-compile isolation: run compiles under a sandboxed
+      ### runtime (gVisor `runsc` or `sysbox-runc`) when installed on the host.
+      ### Leave unset to use the default runc.
+      # DOCKER_RUNTIME: "runsc"
 
       ## Works with test LDAP server shown at bottom of docker compose
       # OVERLEAF_LDAP_URL: 'ldap://ldap:389'
@@ -103,6 +121,35 @@ services:
       # OVERLEAF_NEW_PROJECT_TEMPLATE_LINKS: '[ {"name":"All Templates","url":"/templates/all"}]'
 
       # OVERLEAF_PROXY_LEARN: "true"
+
+  # Least-privilege mediator in front of the docker daemon for Sandboxed
+  # Compiles. The app talks to this over the internal network (DOCKER_HOST)
+  # instead of mounting /var/run/docker.sock directly. Only the container and
+  # image APIs needed to launch compile containers are enabled; exec, volumes,
+  # networks, swarm, secrets and the daemon socket itself are denied.
+  #
+  # NOTE: this limits the *API surface* (and gives an audit point), but a
+  # process that can create containers can still request a privileged one.
+  # For true host isolation also run compiles under a sandboxed runtime
+  # (DOCKER_RUNTIME=runsc/sysbox-runc) and keep registration invite-only.
+  dockerproxy:
+    restart: always
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: dockerproxy
+    environment:
+      CONTAINERS: 1   # create/start/wait/kill/remove/inspect compile containers
+      IMAGES: 1       # inspect/pull the texlive image
+      POST: 1         # allow the POST verbs the above paths need
+      INFO: 1
+      PING: 1
+      VERSION: 1
+      # everything else denied (default 0): EXEC, VOLUMES, NETWORKS, SWARM,
+      # SERVICES, TASKS, SECRETS, CONFIGS, PLUGINS, SYSTEM, BUILD, COMMIT, AUTH
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run
 
   mongo:
     restart: always
