@@ -88,6 +88,32 @@ Reuse the decommissioned Overleaf stack's shape (compose: sharelatex + mongo 6 (
 3. nginx-proxy-manager: new proxy host + Let's Encrypt cert for **openlatex.dev** (domain owned).
 4. Compile safety on a shared box: keep default `compileTimeout: 180` initially (settings.defaults.js:420), `--no-shell-escape` (CE default), container CPU/memory limits in compose. Revisit timeout if CPU contention appears.
 
+### 5a. Reverse-proxy hardening (production behind Nginx Proxy Manager) — TODO
+
+Production runs behind the existing Nginx Proxy Manager (NPM) on `npm-network`.
+NPM terminates TLS and proxies to the app container. Until the items below are
+wired into the production root compose, the deployment is not proxy-safe.
+**Not yet implemented — do during the deploy step:**
+
+1. **Trust the proxy.** Set `OVERLEAF_BEHIND_PROXY=true` and
+   `OVERLEAF_SECURE_COOKIE=true` on the app container. Without these the
+   session cookie is not `Secure` and Express sees NPM's IP instead of the real
+   client — breaking the `Secure` flag and IP-based rate limiting.
+2. **Do not expose the app port to the host.** The root compose currently
+   publishes `80:80` on `0.0.0.0`, which is reachable bypassing NPM. Drop the
+   host publish and attach the app to the external `npm-network` so only NPM
+   can reach it (proxy by container name), or at most bind `127.0.0.1:80`.
+3. **NPM proxy host config:** enable **Websockets Support** (Overleaf
+   real-time/collaboration fails without it), Force SSL, HTTP/2, HSTS, and a
+   Let's Encrypt cert for the domain.
+4. **Canonical URL.** Set `OVERLEAF_SITE_URL=https://<domain>` so absolute
+   URLs, redirects and CSRF checks use the real origin.
+5. **Secrets.** Set a strong `OVERLEAF_INVITE_TOKEN_SECRET` (web currently logs
+   that link-sharing token encryption is uninitialised) and `SESSION_SECRET`
+   before any non-local deploy. Generate with `openssl rand -base64 32`.
+6. Keep the `dockerproxy` (docker-socket-proxy) and the per-compile sibling
+   containers on internal networks only — never proxied or published.
+
 ### 5b. Goal: Sandboxed Compiles (Server Pro parity)
 
 CE compiles run inside the main container via `LocalCommandRunner` — a compiling user has read/write access to the container (upstream README caution). Server Pro fixes this with per-compile sibling Docker containers; the implementation (`services/clsi/app/js/DockerRunner.js`) is **not in the open repo** — but its full unit test is (`services/clsi/test/unit/js/DockerRunner.test.js`). That test is our interface spec.
