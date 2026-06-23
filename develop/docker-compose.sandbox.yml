@@ -1,0 +1,34 @@
+# Dev overlay that turns the clsi service into REAL sandboxed compiles, each
+# LaTeX run in its own sibling container under the gVisor (runsc) runtime.
+#
+# Usage (from develop/):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#                  -f docker-compose.sandbox.yml up --no-deps -d clsi
+#
+# Requires gVisor installed on the host and the `runsc` runtime registered
+# with the docker daemon (develop/bin/install-gvisor.sh).
+#
+# NOTE: this uses the public texlive/texlive image so the containment test is
+# reproducible without a Server Pro / quay entitlement. Production uses the
+# overleaf texlive image (see root docker-compose.yml); the sandbox wiring is
+# identical, only TEXLIVE_IMAGE differs.
+services:
+  clsi:
+    environment:
+      - SANDBOXED_COMPILES=true
+      - DOCKER_RUNNER=true
+      # run every compile container under gVisor for kernel-level isolation
+      - DOCKER_RUNTIME=runsc
+      # public image with pdflatex + latexmk; runs as uid 1000 (= host owner
+      # of the bind-mounted compile dir, so it can write /compile)
+      - TEXLIVE_IMAGE=texlive/texlive:latest-small
+      - ALLOWED_IMAGES=texlive/texlive:latest-small
+      - TEXLIVE_IMAGE_USER=1000
+      # host-side paths of the compile/output dirs (bind source for /compile
+      # in each sibling container)
+      - SANDBOXED_COMPILES_HOST_DIR_COMPILES=/home/mast/Desktop/OpenLatex/develop/compiles
+      - SANDBOXED_COMPILES_HOST_DIR_OUTPUT=/home/mast/Desktop/OpenLatex/develop/output
+    volumes:
+      # the seccomp profile is read at boot when SANDBOXED_COMPILES=true but is
+      # not in the image built from main, so mount the live one in
+      - ../services/clsi/seccomp:/overleaf/services/clsi/seccomp:ro
