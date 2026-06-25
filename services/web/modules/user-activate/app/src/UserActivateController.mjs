@@ -26,6 +26,35 @@ async function register(req, res, next) {
   })
 }
 
+async function publicRegister(req, res, next) {
+  const { email } = req.body
+  if (email == null || email === '') {
+    return res.sendStatus(422)
+  }
+  try {
+    await UserRegistrationHandler.promises.registerNewUserAndSendActivationEmail(
+      email
+    )
+  } catch (error) {
+    if (/invalid email/i.test(error.message)) {
+      return res.status(400).json({
+        message: { type: 'error', text: 'That email address looks invalid.' },
+      })
+    }
+    throw error
+  }
+  // SECURITY: never return setNewPasswordUrl on the public endpoint — it is the
+  // account-activation (password-set) link and must only reach the inbox. The
+  // response is identical whether or not the email already existed, so this
+  // cannot be used to enumerate accounts.
+  res.json({
+    message: {
+      type: 'notice',
+      text: "If that address is valid, we've emailed an activation link. Check your inbox to set a password and finish signing up.",
+    },
+  })
+}
+
 async function activateAccountPage(req, res, next) {
   // An 'activation' is actually just a password reset on an account that
   // was set with a random password originally.
@@ -65,5 +94,6 @@ async function activateAccountPage(req, res, next) {
 export default {
   registerNewUser,
   register: expressify(register),
+  publicRegister: expressify(publicRegister),
   activateAccountPage: expressify(activateAccountPage),
 }

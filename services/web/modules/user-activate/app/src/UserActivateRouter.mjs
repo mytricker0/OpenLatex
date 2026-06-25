@@ -60,7 +60,7 @@ export default {
       CaptchaMiddleware.validateCaptcha('register'),
       RateLimiterMiddleware.rateLimit(publicRegisterIpLimiter),
       globalDailySignupCap,
-      UserActivateController.register
+      UserActivateController.publicRegister
     )
 
     // Admin-only account creation tool (unchanged): create a user directly.
